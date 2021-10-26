@@ -34,8 +34,6 @@
 /// Общий ресурс для чтения-записи
 int resource = 1;
 
-// Mutex для читателей
-
 std::shared_mutex rw_mutex;
 std::mutex output_mutex;
 

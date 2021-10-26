@@ -31,31 +31,28 @@
 #include <mutex>
 #include <vector>
 
-/// Общий ресурс для чтения-записи
-int resource = 1;
-
 // Mutex для читателей
 
 std::shared_mutex rw_mutex;
 std::mutex output_mutex;
 
-void output() {
+void output(const int& resource) {
     std::shared_lock r_guard(rw_mutex);
 
     std::lock_guard output_guard(output_mutex);
     std::cout << resource << std::endl;
 }
 
-void write() {
+void write(int& resource) {
     std::unique_lock w_guard(rw_mutex);
     ++resource;
 }
 
-void reader() {
+void reader(const int& resource) {
     int repeats_num = NUM_OF_REPEATS;
 
     while (repeats_num > 0) {
-        output();
+        output(resource);
 
         // Ожидаем
         int randomized = 0;
@@ -70,11 +67,11 @@ void reader() {
     }
 }
 
-void writer() {
+void writer(int& resource) {
     int repeats_num = NUM_OF_REPEATS;
 
     while (repeats_num > 0) {
-        write();
+        write(resource);
 
         // Ожидаем
         int randomized = 0;
@@ -90,16 +87,19 @@ void writer() {
 }
 
 int main() {
+    /// Общий ресурс для чтения-записи
+    int resource = 1;
+
     std::thread threads[READERS_NUM + WRITERS_NUM];
 
     std::size_t i = 0;
 
     for (; i < READERS_NUM; ++i) {
-        threads[i] = std::thread(reader);
+        threads[i] = std::thread(reader, std::cref(resource));
     }
 
     for (int j = 0; j < WRITERS_NUM; ++j, ++i) {
-        threads[i] = std::thread(writer);
+        threads[i] = std::thread(writer, std::ref(resource));
     }
 
     for (i = 0; i < READERS_NUM + WRITERS_NUM; ++i) {

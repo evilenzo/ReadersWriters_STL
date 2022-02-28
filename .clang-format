@@ -1,11 +1,7 @@
 BasedOnStyle: Google
-ColumnLimit: '90'
-IndentWidth: '4'
-TabWidth: '4'
-AccessModifierOffset: '-4'
+ColumnLimit: '80'
 MaxEmptyLinesToKeep: '4'
 UseTab: Never
-SortIncludes: false
 AlwaysBreakAfterDefinitionReturnType: None
 AlwaysBreakAfterReturnType: None
 

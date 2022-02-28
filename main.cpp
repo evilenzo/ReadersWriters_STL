@@ -1,106 +1,116 @@
 /*
- * Данная программа реализует схему решения задачи
- * "читатели-писатели", используя STL.
+ * Readers-Writers problem solution using STL
  *
- * Приоритет писателя.
- * "Как только появился хоть один писатель, никого больше не пускать.
- * Все остальные могут простаивать"
+ * Writers-preference.
+ * "No writer, once added to the queue, shall be kept waiting
+ * longer than absolutely necessary."
  *
- * Количество читателей, писателей и повторений, задержка, а также возможность
- * случайно генерировать задержку (добавляя случайное число от 0-3
- * к установленной) чтения/записи устанавливаются директивами препроцессора.
+ * Readers and writers amount, read/write delay
+ * or random delay generation option (adding 0-3 to user-defined)
+ * can be changed by #define directives
+ *
+ * P.S. #define directives was one of conditions of this task
  */
 
 
 
-#define READERS_NUM 5  // Количество читателей
-#define WRITERS_NUM 3  // Количество писателей
+#define READERS_AMOUNT 5
+#define WRITERS_AMOUNT 4
 
-#define NUM_OF_REPEATS 3  // Количество повторений
+#define REPEATS_AMOUNT 3
 
-#define READ_DELAY 2   // Задержка чтения
-#define WRITE_DELAY 3  // Задержка записи
+#define READ_DELAY 2
+#define WRITE_DELAY 2
 
-#define RANDOMIZE_DELAY true  // Рандомизировать задержку
+#define RANDOMIZE_DELAY true  // Randomly add 0-3 to upper values
 
 
 
 #include <iostream>
-#include <thread>
-#include <shared_mutex>
 #include <mutex>
-#include <vector>
+#include <random>
+#include <shared_mutex>
+#include <syncstream>
+#include <thread>
 
-std::shared_mutex rw_mutex;
-std::mutex output_mutex;
 
-void output(const int& resource) {
-    std::shared_lock r_guard(rw_mutex);
+class Delayer {
+ public:
+  Delayer() : eng(r()), dist(0, 3) {}
 
-    std::lock_guard output_guard(output_mutex);
-    std::cout << resource << std::endl;
-}
+  void delay() {
+    uint randomized = 0;
 
-void write(int& resource) {
-    std::unique_lock w_guard(rw_mutex);
-    ++resource;
-}
-
-void reader(const int& resource) {
-    int repeats_num = NUM_OF_REPEATS;
-
-    while (repeats_num > 0) {
-        output(resource);
-
-        // Ожидаем
-        int randomized = 0;
-
-        if (RANDOMIZE_DELAY) {
-            randomized = rand() % 4;
-        }
-
-        sleep(READ_DELAY + randomized);
-
-        --repeats_num;
+    if (RANDOMIZE_DELAY) {
+      randomized = dist(eng);
     }
+
+    std::this_thread::sleep_for(std::chrono::seconds(READ_DELAY + randomized));
+  }
+
+ private:
+  std::random_device r = {};
+  std::mt19937 eng;
+  std::uniform_int_distribution<uint> dist;
+};
+
+struct SharedResource {
+  explicit SharedResource(uint32_t value_) : value(value_) {}
+  uint32_t value;
+
+  mutable std::shared_mutex mtx;
+};
+
+void read(const SharedResource& resource) {
+  std::shared_lock r_guard(resource.mtx);
+  std::osyncstream{std::cout} << resource.value << std::endl;
 }
 
-void writer(int& resource) {
-    int repeats_num = NUM_OF_REPEATS;
+void write(SharedResource& resource) {
+  std::unique_lock w_guard(resource.mtx);
+  ++resource.value;
+}
 
-    while (repeats_num > 0) {
-        write(resource);
+void reader(const SharedResource& resource) {
+  Delayer delayer;
+  uint32_t repeats_num = REPEATS_AMOUNT;
 
-        // Ожидаем
-        int randomized = 0;
+  while (repeats_num > 0) {
+    read(resource);
 
-        if (RANDOMIZE_DELAY) {
-            randomized = rand() % 4;
-        }
+    delayer.delay();
 
-        sleep(WRITE_DELAY + randomized);
+    --repeats_num;
+  }
+}
 
-        --repeats_num;
-    }
+void writer(SharedResource& resource) {
+  Delayer delayer;
+  uint32_t repeats_num = REPEATS_AMOUNT;
+
+  while (repeats_num > 0) {
+    write(resource);
+
+    delayer.delay();
+
+    --repeats_num;
+  }
 }
 
 int main() {
-    /// Общий ресурс для чтения-записи
-    int resource = 1;
+  SharedResource resource{1};  // Shared resource for read-write
+  std::thread threads[READERS_AMOUNT + WRITERS_AMOUNT];
+  std::size_t i = 0;
 
-    std::thread threads[READERS_NUM + WRITERS_NUM];
+  for (; i < READERS_AMOUNT; ++i) {
+    threads[i] = std::thread(reader, std::cref(resource));
+  }
 
-    std::size_t i = 0;
+  for (int j = 0; j < WRITERS_AMOUNT; ++j, ++i) {
+    threads[i] = std::thread(writer, std::ref(resource));
+  }
 
-    for (; i < READERS_NUM; ++i) {
-        threads[i] = std::thread(reader, std::cref(resource));
-    }
-
-    for (int j = 0; j < WRITERS_NUM; ++j, ++i) {
-        threads[i] = std::thread(writer, std::ref(resource));
-    }
-
-    for (i = 0; i < READERS_NUM + WRITERS_NUM; ++i) {
-        threads[i].join();
-    }
+  for (i = 0; i < READERS_AMOUNT + WRITERS_AMOUNT; ++i) {
+    threads[i].join();
+  }
 }
